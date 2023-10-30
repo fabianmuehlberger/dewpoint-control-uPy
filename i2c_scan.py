@@ -1,3 +1,7 @@
+# simple helper to scan i2c bus for devices
+# this is not directly needed for running the project, but can be used to check if the i2c bus is working
+
+
 from machine import SoftI2C, Pin
 
 ## Grove Connector 
