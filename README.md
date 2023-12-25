@@ -10,6 +10,9 @@ This condensation can lead to corrosion on metal, and can also damage other mate
 
 A dew point controller can help to prevent condensation by ventilating the garage when the dew point inside is higher than the dew point outside. This brings in drier air from outside, which helps to reduce the humidity inside the garage.
 
+## Calculating the dew point
+
+
 [Wiki](https://en.wikipedia.org/wiki/Dew_point)
 
 ## Concept
@@ -22,7 +25,7 @@ The main difference to the original project is the use of micropython instead of
 - Relays [ATOM SWITCH](https://shop.m5stack.com/products/atom-hub-switch-kit) 
 - I2C Hub [Grove I2C Hub](https://wiki.seeedstudio.com/Grove-8-Channel-I2C-Multiplexer-I2C-Hub-TCA9548A/)
 - Display Generic 4x16 LCD with I2C interface
-- Sensors [AM2315](https://www.adafruit.com/product/1293) discontinued, but there are many alternatives
+- Sensors [SHT31](https://www.dfrobot.com/product-2160.html) discontinued, but there are many alternatives
 - Power Supply [Meanwell IRM 30-5st](https://www.meanwell-web.com/en-gb/ac-dc-single-output-encapsulated-power-supply-irm--30--5st)
 
 The enclosure is not essential, I used a normal plastic junction box to house the electronics with a cutout for the display. 
