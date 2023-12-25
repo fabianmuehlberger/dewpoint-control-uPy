@@ -1,6 +1,7 @@
 # general Libs 
 import machine
-from machine import SoftI2C, Pin
+from machine import I2C, SoftI2C, Pin
+import sht31
 import math
 from time import sleep
 
@@ -8,17 +9,14 @@ from time import sleep
 from lcd_api import LcdApi
 from i2c_lcd import I2cLcd
 
-# Temp and humidity sensor lib 
-import am2320
-
 # Defines Dir calcuating the dewpoint 
-DEWPOINT_MIN_DIFF = 5.0
+DEWPOINT_MIN_DIFF = 3.0
 HYSTERESIS = 1.0
-TEMP1_MIN = 10.0
+TEMP1_MIN = 5.0
 TEMP2_MIN = -10.0
 
 # correction values for the sensors 
-SENS1_CORR_H = 0
+SENS1_CORR_H = 2
 SENS1_CORR_T = 0
 SENS2_CORR_H = 0
 SENS2_CORR_T = 0
@@ -35,10 +33,13 @@ DISP_SDA_PIN = Pin(25)
 maskSensor_1 = b'\x01'
 maskSensor_2 = b'\x02'
 
+# Define I2C pins for the Sensors
+I2C_SENS_SDA = Pin(26)
+I2C_SENS_SCL = Pin(32)
+
 # init I2C for sensors 
-i2c = SoftI2C(scl=Pin(32), sda=Pin(26))
-sensor_1 = am2320.AM2320(i2c)
-sensor_2 = am2320.AM2320(i2c)
+i2c = I2C(1, scl=I2C_SENS_SCL, sda=I2C_SENS_SDA,freq=400000)
+th_sensor = sht31.SHT31(i2c, addr=0x44)
 
 # init I2C for the display
 disp_i2c = SoftI2C(scl=DISP_SCL_PIN, sda=DISP_SDA_PIN, freq=400000)     
@@ -47,8 +48,8 @@ disp_i2c = SoftI2C(scl=DISP_SCL_PIN, sda=DISP_SDA_PIN, freq=400000)
 lcd = I2cLcd(disp_i2c, I2C_ADDR, ROWS, COLUMNS)
 
 # Fan Relais 
-relay_1 = Pin(19, Pin.OUT)
-relay_2 = Pin(22, Pin.OUT)
+relay1 = Pin(19, Pin.OUT)
+relay2 = Pin(22, Pin.OUT)
 
 def calculateDewPoint(temp, rel_hum):
     a = 17.625
@@ -60,73 +61,50 @@ def calculateDewPoint(temp, rel_hum):
     ts = (b * alpha) / (a - alpha)
     return ts
 
-def controlRelay(deltaDP):
-    if (deltaDP > DEWPOINT_MIN_DIFF + HYSTERESIS):
-        relay_1.on()
-        relay_2.on()
+def controlRelay(deltaDP, sens_1, sens_2):
+    if (sens_1[0] < TEMP1_MIN) or (sens_2[0] < TEMP2_MIN):
+        relay1.off()
+        return 0
+    elif (deltaDP < DEWPOINT_MIN_DIFF):
+        relay1.off()
+    elif (deltaDP > DEWPOINT_MIN_DIFF + HYSTERESIS):
+        relay1.on()
         return 1
     else:
-        relay_1.off()
-        relay_2.off()
+        relay1.off()
         return 0
-                
-def readSensor(sensor):
-    sensor.measure()
-    temp = sensor.temperature()
-    hum = sensor.humidity() 
-    return temp, hum
 
-def i2cDisableChannels(i2c):
-    # disable all 8 channels
+def maskI2CMultipexer(mask):
+    # disable all channels of the i2c multiplexer
     i2c.writeto(0x70, b'\x00')
-    
-def i2cReadFrom(i2c):
-    # read which channels are enabled?
-    device = i2c.readfrom(0x70, 1)
-    # b'\x05' - channels 0 and 2 (0x05 == 0b_0000_0101)
-    print("device enabled: ", device)
-
-def i2cEnableChannel(i2c, mask):
-    # disable all channels
-    i2cDisableChannels(i2c)
-    # enable channel 0 (SD0,SC0)
+    #i2c.writeto(0x70, b'\x01')
     i2c.writeto(0x70, mask)
-    i2c.scan()
-    
-def calculateDewPointFromSensor(i2c, mask):
-    # Enable masked channel 
-    i2cEnableChannel(i2c, mask)
-    # Read sensor values from specific channel 
-    temp, hum = readSensor(sensor_1)
-    # Disable all channels again for next read
-    i2cDisableChannels(i2c)
-    
-    dewPoint = calculateDewPoint(temp, hum)
-    result = [temp, hum, dewPoint]
-    return result
 
+def getSensorValue(mask):
+    maskI2CMultipexer(mask)
+    th = th_sensor.get_temp_humi()
+    return list(th)
+     
 def printScreen(sensor_1, sensor_2, delta, relayState):
-    # Write first row of the display
     lcd.move_to(0, 0)
     lcd.putstr("S1")
     lcd.putstr(createPrintString(sensor_1))
-    # Write second row of the display
+    
     lcd.move_to(0, 1)
     lcd.putstr("S2")
     lcd.putstr(createPrintString(sensor_2))
-    # Write third row of the display
+    
     lcd.move_to(0, 2)
     s = '{}{:.1f}'.format('delta ', delta)
     lcd.putstr(str(s))
-    # Write forth row of the display
-    lcd.move_to(0, 3)
+    
+    lcd.move_to(0, 3)   
     if(relayState == 1):
-        lcd.putstr('Relay is ON')
+        lcd.putstr('Relay is ON  ')
     else:
         lcd.putstr('Relay is OFF')
     
 def createPrintString(values):
-    # format a string with given temperature, humidity, and dewpoint
     temp = ' T'
     hum = ' H'
     dp = ' dp'
@@ -137,27 +115,36 @@ lcd.clear()
 lcd.backlight_on()
       
 flag = 50
-while(flag > 0):
+while(1):
     
-    # read values the sensors and calculate the dewpoint 
-    dewPoint_1 = calculateDewPointFromSensor(i2c, maskSensor_1)
-    dewPoint_2 = calculateDewPointFromSensor(i2c, maskSensor_2)
+    thd_Sensor_1 = getSensorValue(maskSensor_1)
+    dewPoint_1 = calculateDewPoint(thd_Sensor_1[0], thd_Sensor_1[1])
+    thd_Sensor_1.append(dewPoint_1)
+
     
-    # calculate delta for switching the relay
-    delta = dewPoint_2[2] - dewPoint_1[2]
-    relayState = controlRelay(delta)
+    thd_Sensor_2 = getSensorValue(maskSensor_2)
+    dewPoint_2 = calculateDewPoint(thd_Sensor_2[0], thd_Sensor_2[1])
+    thd_Sensor_2.append(dewPoint_2)
     
-    # print the LCD screen 
-    printScreen(dewPoint_1, dewPoint_2, delta, relayState)
+    # correct temp and hum values
+    #dewPoint_1[1] += SENS1_CORR_H
+    
+    delta = thd_Sensor_1[2] - thd_Sensor_2[2]
+    relayState = controlRelay(delta, thd_Sensor_1, thd_Sensor_2)
+    printScreen(thd_Sensor_1, thd_Sensor_2, delta, relayState)
+    
+    
+    print("sensor_1", thd_Sensor_1)
+    print("sensor_2", thd_Sensor_2)
     
     sleep(0.5)
-    flag -= 1 
 
 
 
     
     
     
+
 
 
 
