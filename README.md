@@ -10,7 +10,7 @@ This condensation can lead to corrosion on metal, and can also damage other mate
 
 A dew point controller can help to prevent condensation by ventilating the garage when the dew point inside is higher than the dew point outside. This brings in drier air from outside, which helps to reduce the humidity inside the garage.
 
-## Calculating the dew point
+
 
 
 [Wiki](https://en.wikipedia.org/wiki/Dew_point)
